@@ -12,7 +12,7 @@
 rm(list=ls())
 
 ## directory containing all the (intermediate) analysis results
-saveres <- file.path("saveres")
+saveres <- file.path("saveres2")
 if(!file.exists(saveres)) { dir.create(saveres, showWarnings=FALSE) }
 
 ## "bad" characters
@@ -25,7 +25,8 @@ badchars <- "[\xb5]|[\n]|[,]|[;]|[:]|[-]|[+]|[*]|[%]|[$]|[#]|[{]|[}]|[[]|[]]|[|]
 # library(Vennerable)
 suppressPackageStartupMessages(require(WriteXLS)) || stop("Library WriteXLS is not available!")
 suppressPackageStartupMessages(require(genefu)) || stop("Library genefu is not available!")
-# library(GOSim)
+suppressPackageStartupMessages(require(gdata)) || stop("Library gdata is not available!")
+# suppressPackageStartupMessages(require(GOSim)) || stop("Library GOSim is not available!")
 
 ## number of cores to use during normalization
 suppressPackageStartupMessages(require(parallel)) || stop("Library parallel is not available!")
@@ -46,13 +47,14 @@ suppressPackageStartupMessages(require(mRMRe)) || stop("Library mRMRe is not ava
 #################################################
 
 ## number of signatures
-solnb <- 10
+solnb <- 10000
 
 ## signature length
 solength <- 100
 
 ## method to use for the ensemble mRMR (either "exhaustive" or "bootstrap")
-fs.method <- "exhaustive"
+# fs.method <- "exhaustive"
+fs.method <- "bootstrap"
 
 ## which drug
 drugnoi <- "drugid_PD0325901"
@@ -149,7 +151,6 @@ for(i in 1:length(tissuex)) {
     ## create a directory to store tissue-specific analysis results
     saverest <- file.path(saveres, sprintf("res_%s", names(tissuex)[i]))
     if(!file.exists(saverest)) { dir.create(saverest, showWarnings=FALSE) } 
-   
     myfnall <- file.path(saverest, sprintf("drug_%s_%s.RData", gsub("drugid_", "", drugnoi), names(tissuex)[i]))
     if(!file.exists(myfnall)) {
       ## for each dataset
@@ -166,6 +167,7 @@ for(i in 1:length(tissuex)) {
           ## ensemble mRMR feature selection
           ens.systimet <- system.time(ens.mt <- mRMR.ensemble(mdata, solution_count=solnb, feature_count=solength, target_indices=1, method=fs.method))
           myfst <- apply(solutions(ens.mt)[[1]], 2, function(x, y) { return(y[x]) }, y=featureNames(mdata))
+          dimnames(myfst) <- list(paste("feature", 1:nrow(myfst), sep="."), paste("solution", 1:ncol(myfst), sep="."))
           save(list=c("ens.mt", "myfst", "ens.systimet"), compress=TRUE, file=myfn)
         } else { load(myfn) }
         myfs <- c(myfs, list(myfst))
@@ -176,12 +178,28 @@ for(i in 1:length(tissuex)) {
       save(list=c("myfs", "ens.m", "ens.systime"), compress=TRUE, file=myfnall)
     } else { load(myfnall) }
     ## save the signatures
+    ## gene ids
     xx <- NULL
-    for(jj in 1:length(myfs)) {
-      xx <- c(xx, list(data.frame("sol"=myfs[[jj]])))
+    for(kk in 1:length(myfs)) {
+      xx <- c(xx, list(data.frame(t(myfs[[kk]]))))
     }
     names(xx) <- names(myfs)
-    WriteXLS(x="xx", ExcelFileName=file.path(saverest, sprintf("drug_%s_%s.xls", gsub("drugid_", "", drugnoi), names(tissuex)[i])), BoldHeaderRow=TRUE)
-  } else { message("\t\t-> Not enough cell lines...") }
-  
+    WriteXLS(x="xx", ExcelFileName=file.path(saverest, sprintf("drug_%s_%s_feature_names.xls", gsub("drugid_", "", drugnoi), names(tissuex)[i])), BoldHeaderRow=FALSE, row.names=TRUE)
+    ## positiono of genes in the data
+    xx2 <- NULL
+    for(kk in 1:length(myfs)) {
+      ggnb <- 1:ncol(datat.all[[kk]])
+      names(ggnb) <- colnames(datat.all[[kk]])
+      tt <- t(apply(myfs[[kk]], 2, function(x, y) { return(y[x]) }, y=ggnb))
+      dimnames(tt) <- dimnames(t(myfs[[kk]]))
+      xx2 <- c(xx2, list(data.frame(tt)))
+    }
+    names(xx2) <- names(myfs)
+    WriteXLS(x="xx2", ExcelFileName=file.path(saverest, sprintf("drug_%s_%s_feature_numbers.xls", gsub("drugid_", "", drugnoi), names(tissuex)[i])), BoldHeaderRow=FALSE, row.names=TRUE)
+  } else { message("\t\t-> Not enough cell lines...") } 
 }
+
+## read solutions
+
+
+
